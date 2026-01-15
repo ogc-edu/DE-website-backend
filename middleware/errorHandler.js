@@ -31,11 +31,13 @@ const errorHandler = (err, req, res, next) => {
   if(err.name === 'Error'){   //manual JS error object
     error.statusCode = 400;
   }
-  res.status(error.statusCode).json({
+
+  const statusCode = error.statusCode || 500;
+  res.status(statusCode).json({
     success: false,
     error: error.message || 'Server Error',
   })
 };
 
-export default errorHandler;
+module.exports = errorHandler;
 

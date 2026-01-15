@@ -80,7 +80,12 @@ userSchema.statics.register = async function(username, email, password){
   const user = await this.create({username, email, password});    //this.create triggers pre 'save' middleware, this.insertOne skip middleware straight save no hashing
   return user;
 }
-//middleware before saving document 
+
+userSchema.methods.executeSimulation = async function(){
+  
+}
+
+//middleware before saving document, used in create 
 userSchema.pre('save', async function(next){
   if(!this.isModified('password')){return next()}
   try{
