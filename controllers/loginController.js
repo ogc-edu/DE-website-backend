@@ -9,8 +9,7 @@ const login = async (req, res, next) => {
     const token = user.generateJwtToken();
     res.status(200).json({ message: "Login successful", token: token });
   } catch (error) {
-    next(error);    //pass to error handler middleware
+    next(error); //pass to error handler middleware
   }
 };
-
 module.exports = { login };
