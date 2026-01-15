@@ -86,15 +86,15 @@ simulationSchema.statics.deleteSimulation = async function (
 };
 
 //cancel simulation
-simulationSchema.methods.cancelSimulation = async function (
+simulationSchema.statics.cancelSimulation = async function (
   userId,
   simulationId
 ) {
-  const simulation = await this.getSimulationById(simulationId);
+  const simulation = await this.findById(simulationId);
   if (!simulation) {
     throw new Error("Simulation not found");
   }
-  if (simulation.userId !== userId) {
+  if (simulation.userId.toString() !== userId) {
     throw new Error("Unauthorized");
   }
   const success = await this.findByIdAndUpdate(simulationId, {
@@ -103,7 +103,7 @@ simulationSchema.methods.cancelSimulation = async function (
   if (!success) {
     throw new Error("Simulation cancel failed");
   }
-  return success;
+  return success._id.toString();
 };
 
 module.exports = mongoose.model("simulations", simulationSchema);

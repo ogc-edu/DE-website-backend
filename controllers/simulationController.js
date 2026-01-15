@@ -51,25 +51,18 @@ const deleteSimulation = async (req, res, next) => {
 
 const cancelSimulation = async (req, res, next) => {
   try {
-    const { simulationId } = req.body;
+    const simulationId = req.params.simulationId;
     const userId = req.userId;
-    const simulation = await simulations.getSimulationById(simulationId);
-    if (!simulation) {
-      throw new Error("Simulation not found");
-    }
-    if (simulation.userId.toString() !== userId) {
-      throw new Error("user id not authorized to cancel this simulation");
-    }
-    const deletedSimulationId = await simulations.cancelSimulation(
+    const cancelledSimulationId = await simulations.cancelSimulation(
       userId,
       simulationId
     );
-    if (!deletedSimulationId) {
+    if (!cancelledSimulationId) {
       throw new Error("Simulation cancel failed");
     }
     res.status(200).json({
       message: "Simulation cancelled successfully",
-      deletedSimulationId,
+      cancelledSimulationId,
     });
   } catch (err) {
     next(err);

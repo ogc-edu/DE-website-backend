@@ -12,7 +12,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 router.post("/create", authMiddleware, createSimulation);
 router.get("/get", authMiddleware, getAllSimulations);
 router.delete("/delete/:simulationId", authMiddleware, deleteSimulation);
-router.put("/cancel", authMiddleware, cancelSimulation);
+router.post("/cancel/:simulationId", authMiddleware, cancelSimulation);
 router.get("/get/:simulationId", authMiddleware, getSingleSimulation);
 
 module.exports = router;
