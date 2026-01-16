@@ -5,9 +5,13 @@ A modern React-based web application to simulate and visualize the performance o
 ## Features
 **This is a project still under development**
 -This is the backend logic for DE dashboard 
+
 -Built using Node.js with Express.js framework and MongoDB database.
--Implement MVC architecture 
+
+-Implement MVC architecture
+
 This project features 4 main functionalities:
+
 1. Data visualization - user able to visualize performance of DE models toward benchmark function in charts(line/bar)
 2. DE Model simulation - user able to simulate DE models by giving parameters (cloud computing by AWS EC2) 
 3. Author(me) portfolio - A student portfolio page to appreciate my mentor/supervisor Ts Dr. Lim Seng Poh for his unwavering support 
