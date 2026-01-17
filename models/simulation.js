@@ -43,6 +43,12 @@ const simulationSchema = new mongoose.Schema({
       required: true,
     },
   },
+  progress: {
+    type: Number,
+    default: 0,
+    max: 100,
+    min: 0,
+  },
 });
 
 simulationSchema.statics.createSimulation = async function (
