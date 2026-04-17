@@ -1,15 +1,14 @@
 const mongoose = require("mongoose");
+const chalk = require("chalk");
 
 const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGODB_URI || "mongodb://localhost:27017";
     const dbName = process.env.DB_NAME || "Dashboard-Database";
-
     await mongoose.connect(mongoURI, { dbName });
-
-    console.log("✅ MongoDB connected successfully");
+    console.log(chalk.green.bold("Database connected successfully"));
   } catch (error) {
-    console.error("❌ MongoDB connection error:", error);
+    console.error(chalk.red.bgWhite("31mDatabase connection error:"), error);
     process.exit(1);
   }
 };

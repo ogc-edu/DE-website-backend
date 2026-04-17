@@ -7,12 +7,11 @@ const {
   cancelSimulation,
   getSingleSimulation,
 } = require("../controllers/simulationController");
-const authMiddleware = require("../middleware/authMiddleware");
 
-router.post("/create", authMiddleware, createSimulation);
-router.get("/get", authMiddleware, getAllSimulations);
-router.delete("/delete/:simulationId", authMiddleware, deleteSimulation);
-router.post("/cancel/:simulationId", authMiddleware, cancelSimulation);
-router.get("/get/:simulationId", authMiddleware, getSingleSimulation);
+router.post("/create", createSimulation);
+router.get("/get", getAllSimulations);
+router.delete("/delete/:simulationId", deleteSimulation);
+router.post("/cancel/:simulationId", cancelSimulation);
+router.get("/get/:simulationId", getSingleSimulation);
 
 module.exports = router;

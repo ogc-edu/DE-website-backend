@@ -1,11 +1,14 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+require("dotenv").config();
+
 
 const userSchema = new mongoose.Schema({
   username: {
     type: String,
     required: [true, "Please provide a name"],
+    minLength: [3, "Name must be at least 3 characters long"],
     maxLength: [50, "Name cannot exceed 50 characters"],
   },
   email: {
@@ -16,8 +19,6 @@ const userSchema = new mongoose.Schema({
       /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
       "Please add a valid email",
     ], //regex
-    immutable: true,
-    //*= optional += mandatory
   },
   password: {
     type: String,
@@ -43,7 +44,9 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ["admin", "user"],
+    enum: {values: ["admin", "user"],
+    message: "Role must be either admin or user"
+    },
     default: "user",
   },
   profilePicture: {
@@ -58,14 +61,8 @@ const userSchema = new mongoose.Schema({
   },
 });
 
-userSchema.methods.generateJwtToken = function () {
-  return jwt.sign({ userId: this._id.toString() }, process.env.JWT_SECRET, {
-    expiresIn: "1h",
-  });
-};
-
 userSchema.statics.login = async function (email, password) {
-  const user = await this.findOne({ email }).select("+password");
+  const user = await this.findOne({ email }).select("password"); //only return password and _id
 
   if (!user) {
     throw new Error("Invalid email or password");
@@ -74,7 +71,7 @@ userSchema.statics.login = async function (email, password) {
   if (!isPasswordValid) {
     throw new Error("Invalid email or password");
   }
-  return user;
+  return user; //return user object, then call generateJwtToken function
 };
 
 userSchema.statics.register = async function (username, email, password) {
@@ -82,13 +79,29 @@ userSchema.statics.register = async function (username, email, password) {
   if (exist) {
     throw new Error("User already exists");
   }
-  const user = await this.create({ username, email, password }); //this.create triggers pre 'save' middleware, this.insertOne skip middleware straight save no hashing
-  return user;
+  //this.create triggers pre 'save' middleware, this.insertOne skip middleware straight save no hashing
+  return await this.create({username, email, password});
 };
 
 userSchema.methods.executeSimulation = async function () {};
 
-//middleware before saving document, used in create
+userSchema.methods.generateJwtToken = function () {
+  return jwt.sign({ userId: this._id.toString() }, process.env.JWT_SECRET, {
+    expiresIn: "1h",
+  });
+};
+
+userSchema.methods.modifyEmail = async function (newEmail){
+  const exist = await this.findOne({email: newEmail});
+  if(!exist){
+    throw new Error("Email does not exists");
+  }
+  this.email = newEmail;
+  return this.save();
+}
+
+//middleware before saving new user,
+//used async because bcrypt is time-consuming
 userSchema.pre("save", async function () {
   if (!this.isModified("password")) {
     return;

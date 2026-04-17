@@ -14,13 +14,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(
   cors({
-    origin: true, // Allow all origins in development
-    credentials: true,
+    origin: true, //allow all origins in development
+    credentials: true, //trust cookies from browser/frontend
   })
 );
 
-// Routes
-app.use("/", routes);
+//Routes, start with /api, like /api/simulations
+app.use("/api", routes);
+
+// Redirect top-level homepage to /api
+app.get("/", (req, res) => {
+  res.redirect("/api");
+});
 
 // Error handling middleware (must be last)
 app.use(notFound);
