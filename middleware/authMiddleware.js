@@ -16,7 +16,6 @@ const authMiddleware = async (req, res, next) => {
     }
     req.userId = decoded.userId; //add userId to request object
     next(); //pass control to next middleware or route handler
-
   } catch (err) {
     return res.redirect("/api/login");
   }

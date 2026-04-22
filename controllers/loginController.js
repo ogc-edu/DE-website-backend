@@ -12,4 +12,5 @@ const login = async (req, res, next) => {
     next(error); //pass to error handler middleware
   }
 };
+
 module.exports = { login };
