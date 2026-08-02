@@ -3,21 +3,24 @@ const User = require("../models/user");
 
 const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
-  //format is Bearer <token>
   const token = authHeader && authHeader.split(" ")[1];
   if (!token) {
-    return res.redirect("/api/login");
+    return res.status(401).json({ message: "No token, authorization denied" });
   }
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const userExists = await User.findById(decoded.userId).select("_id");
-    if (!userExists) {
-      return res.redirect("/api/login");
+    const user = await User.findById(decoded.userId).select("_id username role isActive");
+    if (!user) {
+      return res.status(401).json({ message: "Token is not valid, user not found" });
     }
-    req.userId = decoded.userId; //add userId to request object
-    next(); //pass control to next middleware or route handler
+    if (!user.isActive) {
+      return res.status(403).json({ message: "Account has been suspended" });
+    }
+    req.userId = decoded.userId;
+    req.user = user;
+    next();
   } catch (err) {
-    return res.redirect("/api/login");
+    return res.status(401).json({ message: "Token is not valid" });
   }
 };
 

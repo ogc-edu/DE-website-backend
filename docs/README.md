@@ -1,0 +1,56 @@
+# DE Research Dashboard Backend — Documentation
+
+Complete documentation for the Differential Evolution Research Dashboard backend API.
+
+## Table of Contents
+
+| Document | Description |
+|---|---|
+| [Setup Guide](./setup.md) | Installation, environment variables, Docker, running the server |
+| [Architecture](./architecture.md) | Project structure, design decisions, request lifecycle |
+| [Authentication](./authentication.md) | JWT auth flow, refresh token rotation, role-based access |
+| [API Reference](./api-reference.md) | All endpoints with request/response examples |
+| [Database Models](./models.md) | Mongoose schemas, fields, indexes, static methods |
+| [Middleware](./middleware.md) | Auth, admin, validation, error handling, logging |
+| [Testing](./testing.md) | Test structure, running tests, coverage |
+
+## Quick Links
+
+- **Swagger UI**: `http://localhost:3000/api/v1/docs` (interactive API docs when server is running)
+- **Health Check**: `http://localhost:3000/api/v1/health`
+- **Base URL**: `http://localhost:3000/api/v1`
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Runtime | Node.js 20 |
+| Framework | Express 5 |
+| Database | MongoDB 7 (via Mongoose 9) |
+| Auth | JWT (jsonwebtoken) + bcrypt |
+| Validation | Zod 4 |
+| Logging | Winston + Morgan |
+| Security | Helmet, CORS, httpOnly cookies |
+| API Docs | Swagger/OpenAPI 3.0 |
+| Testing | Jest 30 + Supertest 7 |
+| Containerization | Docker (multi-stage, Node 20 slim) |
+
+## API Versioning
+
+All routes are versioned under `/api/v1`. Future versions will use `/api/v2`, etc.
+
+## Overview
+
+This backend serves a research dashboard for comparing Differential Evolution (DE) algorithm variants across benchmark fitness functions. Researchers configure experiments (benchmark functions, mutation schemes, crossover operators, selection methods), and the system computes all model combinations as a Cartesian product. Results are stored as a grid of lowest fitness values per model per function.
+
+### Core Features
+
+- **User authentication** — JWT access tokens (1h) + refresh token rotation (7d) via httpOnly cookies
+- **Role-based access control** — `user` (researcher) and `admin` roles enforced at route level
+- **Simulation management** — create, list (paginated), retrieve, cancel, delete, and view results
+- **Admin oversight** — list all users (paginated), suspend/activate users, view all simulations, delete any simulation, queue status
+- **User profile** — view profile, update username/email, change password
+- **Input validation** — Zod schemas on all mutation endpoints
+- **Structured logging** — Winston logger with file + console transports
+- **API documentation** — Swagger UI auto-generated from JSDoc annotations
+- **Dockerized** — multi-stage Dockerfile + docker-compose with MongoDB

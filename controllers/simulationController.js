@@ -21,9 +21,12 @@ const createSimulation = async (req, res, next) => {
 const getAllSimulations = async (req, res, next) => {
   try {
     const userId = req.userId;
-    const simulation = await simulations.getSimulation(userId);
-    const simulationCount = simulation.length;
-    res.status(200).json({ simulationCount, simulation });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 0;
+    const status = req.query.status;
+
+    const result = await simulations.getSimulation(userId, { page, limit, status });
+    res.status(200).json(result);
   } catch (err) {
     next(err);
   }
@@ -86,10 +89,35 @@ const getSingleSimulation = async (req, res, next) => {
   }
 };
 
+const getSimulationResults = async (req, res, next) => {
+  try {
+    const simulationId = req.params.simulationId;
+    const userId = req.userId;
+    const simulation = await simulations.getSimulationById(simulationId);
+    if (!simulation) {
+      throw new Error("Simulation not found");
+    }
+    if (simulation.userId.toString() !== userId) {
+      throw new Error("user id not authorized to access this simulation");
+    }
+    res.status(200).json({
+      simulationId: simulation._id,
+      status: simulation.status,
+      totalModels: simulation.totalModels,
+      completedModels: simulation.completedModels,
+      progress: simulation.progress,
+      simulationData: simulation.simulationData,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   createSimulation,
   getAllSimulations,
   deleteSimulation,
   cancelSimulation,
   getSingleSimulation,
+  getSimulationResults,
 };

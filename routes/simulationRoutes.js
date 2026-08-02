@@ -6,12 +6,162 @@ const {
   deleteSimulation,
   cancelSimulation,
   getSingleSimulation,
+  getSimulationResults,
 } = require("../controllers/simulationController");
+const validate = require("../middleware/validate");
+const { createSimulationSchema } = require("../validators/simulationValidators");
 
-router.post("/create", createSimulation);
+/**
+ * @openapi
+ * /api/v1/simulation/create:
+ *   post:
+ *     summary: Create a new simulation
+ *     tags: [Simulation]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [functions, methods]
+ *             properties:
+ *               functions:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *               methods:
+ *                 type: object
+ *                 properties:
+ *                   mutation:
+ *                     type: array
+ *                     items:
+ *                       type: integer
+ *                   crossover:
+ *                     type: array
+ *                     items:
+ *                       type: integer
+ *                   selection:
+ *                     type: array
+ *                     items:
+ *                       type: integer
+ *     responses:
+ *       201:
+ *         description: Simulation created
+ *       401:
+ *         description: Unauthorized
+ */
+router.post("/create", validate(createSimulationSchema), createSimulation);
+
+/**
+ * @openapi
+ * /api/v1/simulation/get:
+ *   get:
+ *     summary: Get all simulations for the authenticated user
+ *     tags: [Simulation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, completed, failed, cancelled]
+ *     responses:
+ *       200:
+ *         description: List of simulations
+ */
 router.get("/get", getAllSimulations);
-router.delete("/delete/:simulationId", deleteSimulation);
-router.post("/cancel/:simulationId", cancelSimulation);
+
+/**
+ * @openapi
+ * /api/v1/simulation/get/{simulationId}/results:
+ *   get:
+ *     summary: Get simulation results grid
+ *     tags: [Simulation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: simulationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Simulation results data
+ *       400:
+ *         description: Not found or unauthorized
+ */
+router.get("/get/:simulationId/results", getSimulationResults);
+
+/**
+ * @openapi
+ * /api/v1/simulation/get/{simulationId}:
+ *   get:
+ *     summary: Get a single simulation by ID
+ *     tags: [Simulation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: simulationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Simulation details
+ */
 router.get("/get/:simulationId", getSingleSimulation);
+
+/**
+ * @openapi
+ * /api/v1/simulation/delete/{simulationId}:
+ *   delete:
+ *     summary: Delete a simulation
+ *     tags: [Simulation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: simulationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Simulation deleted
+ */
+router.delete("/delete/:simulationId", deleteSimulation);
+
+/**
+ * @openapi
+ * /api/v1/simulation/cancel/{simulationId}:
+ *   post:
+ *     summary: Cancel a simulation
+ *     tags: [Simulation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: simulationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Simulation cancelled
+ */
+router.post("/cancel/:simulationId", cancelSimulation);
 
 module.exports = router;

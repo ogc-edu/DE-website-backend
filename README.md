@@ -1,51 +1,105 @@
 # Differential Evolution Research Dashboard Backend
 
-A modern React-based web application to simulate and visualize the performance of different Differential Evolution (DE) algorithms across various benchmark fitness functions.
+A Dockerized Express 5 backend that accepts simulation parameter sets from researchers, queues them for processing by EC2 workers, and stores results (per-model-per-function lowest fitness values) to MongoDB with real-time progress tracking.
 
-## Features
-**This is a project still under development**
--This is the backend logic for DE dashboard 
+## Quick Start
 
--Built using Node.js with Express.js framework and MongoDB database.
+```bash
+# Install dependencies
+npm install
 
--Implement MVC architecture
+# Create .env (see docs/setup.md for details)
+cp .env.example .env  # or create manually
 
-This project features 4 main functionalities:
+# Start development server (requires MongoDB running locally)
+npm run dev
 
-1. Data visualization - user able to visualize performance of DE models toward benchmark function in charts(line/bar)
-2. DE Model simulation - user able to simulate DE models by giving parameters (cloud computing by AWS EC2) 
-3. Author(me) portfolio - A student portfolio page to appreciate my mentor/supervisor Ts Dr. Lim Seng Poh for his unwavering support 
-4. Profile Management - Page for user to manage and modify their profile
+# Or start everything with Docker Compose
+docker-compose up --build
+```
+
+The server runs on `http://localhost:3000`.
+Swagger UI available at `http://localhost:3000/api/v1/docs`.
+
+## Documentation
+
+Full documentation is available in the [`docs/`](./docs/) directory:
+
+| Document | Description |
+|---|---|
+| [Setup Guide](./docs/setup.md) | Installation, environment variables, Docker |
+| [Architecture](./docs/architecture.md) | Project structure, design decisions, request lifecycle |
+| [Authentication](./docs/authentication.md) | JWT auth flow, refresh token rotation, RBAC |
+| [API Reference](./docs/api-reference.md) | All endpoints with request/response examples |
+| [Database Models](./docs/models.md) | Mongoose schemas, fields, indexes, methods |
+| [Middleware](./docs/middleware.md) | Auth, admin, validation, error handling, logging |
+| [Testing](./docs/testing.md) | Test structure, running tests, coverage |
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Runtime | Node.js 20 |
+| Framework | Express 5 |
+| Database | MongoDB 7 (via Mongoose 9) |
+| Auth | JWT + bcrypt + refresh token rotation |
+| Validation | Zod 4 |
+| Logging | Winston + Morgan |
+| Security | Helmet, CORS, httpOnly cookies |
+| API Docs | Swagger/OpenAPI 3.0 |
+| Testing | Jest 30 + Supertest 7 (58 tests) |
+| Containerization | Docker (multi-stage, Node 20 slim) |
+
+## API Overview
+
+All routes are versioned under `/api/v1`.
+
+| Endpoint Group | Auth | Description |
+|---|---|---|
+| `/api/v1/register`, `/login`, `/verify`, `/refresh`, `/logout` | — | Authentication |
+| `/api/v1/user/profile`, `/user/password` | Bearer token | User profile management |
+| `/api/v1/simulation/*` | Bearer token | Simulation CRUD + results |
+| `/api/v1/admin/*` | Bearer token + Admin | Admin oversight |
+| `/api/v1/health` | — | Health check |
+| `/api/v1/docs` | — | Swagger UI |
+
+See the [API Reference](./docs/api-reference.md) for complete details.
+
+## npm Scripts
+
+```bash
+npm start              # Start production server
+npm run dev            # Start dev server (nodemon hot-reload)
+npm test               # Run all tests
+npm run test:watch     # Run tests in watch mode
+npm run test:coverage  # Run tests with coverage report
+```
+
+## Project Structure
+
+```
+├── app.js              # Express app (middleware, routes)
+├── server.js           # Server entry point
+├── config/             # Database + logger config
+├── controllers/        # Route handlers (auth, simulation, admin, user)
+├── middleware/         # auth, admin, validation, error handling
+├── models/             # Mongoose schemas (User, Simulation)
+├── routes/             # Express routers (auth, simulation, admin, user)
+├── validators/         # Zod validation schemas
+├── docs/               # Documentation + Swagger config
+├── tests/              # Jest + Supertest test suites
+├── Dockerfile          # Production image
+├── Dockerfile.dev      # Development image
+└── docker-compose.yml  # MongoDB + backend services
+```
+
+See [Architecture](./docs/architecture.md) for detailed breakdown.
 
 ## DE Models Compared
-The dashboard compares total 80 different Differential Evolution models by combining 10 mutation schemes, 4 crossover operators and 2 selection methods 
 
-## Installation
+The dashboard compares up to 80 different Differential Evolution models by combining:
+- 10 mutation schemes (1–10)
+- 4 crossover operators (1–4)
+- 2 selection methods (1–2)
 
-1. **Clone the repository**:
-
-   ```bash
-   git clone <repository-url>
-   cd de-research-dashboard
-   ```
-
-2. **Install dependencies**:
-
-   ```bash
-   npm install
-   ```
-
-3. **Start the development server**:
-
-   ```bash
-   npm start
-   ```
-
-## Technologies Used
-
-- **React** - Frontend framework
-- **Chart.js** - Data visualization library
-- **Tailwind CSS** - Responsive layout system
-- **Node.js** - Backend logic
-- **AWS Services** - Cloud computing for simulation
-- **MongoDB** - NoSQL storage for simplicity and large data storage
+Across 10 benchmark fitness functions (1–10), the system computes all combinations as a Cartesian product and stores the lowest fitness value for each model per function.

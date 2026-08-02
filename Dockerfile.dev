@@ -1,0 +1,7 @@
+FROM node:20-slim
+WORKDIR /app
+RUN apt-get update -qq && apt-get install -y -qq netcat-openbsd && rm -rf /var/lib/apt/lists/*
+COPY package*.json ./
+RUN npm install
+EXPOSE 3000
+CMD ["npx", "nodemon", "-L", "server.js"]

@@ -9,25 +9,22 @@ const simulationSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     required: true,
-    ref: "User", //reference to User model, used for populate
+    ref: "User",
+    index: true,
   },
   simulationData: {
-    //update later
-    type: [], //mixed data type array of objects
+    type: [
+      {
+        functionId: { type: Number, required: true },
+        mutationId: { type: Number, required: true },
+        crossoverId: { type: Number, required: true },
+        selectionId: { type: Number, required: true },
+        lowestFitness: { type: Number, default: null },
+      },
+    ],
     default: [],
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-    required: true,
-  },
-  updatedAt: {
-    type: Date,
-    default: null,
-    required: true,
-  },
   status: {
-    //status for simulation, pending, completed, failed, cancelled
     type: String,
     enum: {
         values: ["pending", "completed", "failed", "cancelled"],
@@ -35,9 +32,10 @@ const simulationSchema = new mongoose.Schema({
     },
     default: "pending",
     required: true,
+    index: true,
   },
   functions: {
-    type: [Number], //1 to 10 map func1 to func10
+    type: [Number],
     required: true,
     validate: {
       validator: isIntegerArray,
@@ -67,7 +65,7 @@ const simulationSchema = new mongoose.Schema({
       min: [1, "Crossover must be between 1 and 4"],
       max: [4, "Crossover must be between 1 and 4"],
     },
-    selection: {    //
+    selection: {
       validate: {
         validator: isIntegerArray,
         message: 'Selection must be an array of integers',
@@ -79,13 +77,23 @@ const simulationSchema = new mongoose.Schema({
     },
 
   },
-  progress: {   //show progress of simulation, 0 - 100%
+  totalModels: {
+    type: Number,
+    required: true,
+    default: 0,
+  },
+  completedModels: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  progress: {
     type: Number,
     default: 0,
     max: 100,
     min: 0,
   },
-});
+}, { timestamps: true });
 
 
 
@@ -95,13 +103,41 @@ simulationSchema.statics.createSimulation = async function (
   functions,
   methods
 ) {
-  return await this.create({userId, functions, methods});
+  const totalModels =
+    functions.length *
+    methods.mutation.length *
+    methods.crossover.length *
+    methods.selection.length;
+  return await this.create({ userId, functions, methods, totalModels });
 };
 
 //return all simulations for user simulation page
-simulationSchema.statics.getSimulation = async function (userId) {
-  //need to format what to return
-  return await this.find({userId});
+simulationSchema.statics.getSimulation = async function (userId, options = {}) {
+  const { page = 1, limit = 0, status } = options;
+  const filter = { userId };
+  if (status) {
+    filter.status = status;
+  }
+
+  if (limit > 0) {
+    const skip = (page - 1) * limit;
+    const [simulations, total] = await Promise.all([
+      this.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      this.countDocuments(filter),
+    ]);
+    return {
+      simulations,
+      simulationCount: total,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  const simulations = await this.find(filter).sort({ createdAt: -1 });
+  return {
+    simulations,
+    simulationCount: simulations.length,
+  };
 };
 
 //return single simulation for simulation-specific functionality
@@ -139,9 +175,11 @@ simulationSchema.statics.cancelSimulation = async function (
   if (simulation.userId.toString() !== userId) {
     throw new Error("Unauthorized");
   }
-  const success = await this.findByIdAndUpdate(simulationId, {
-    status: "cancelled",
-  });
+  const success = await this.findByIdAndUpdate(
+    simulationId,
+    { status: "cancelled" },
+    { new: true }
+  );
   if (!success) {
     throw new Error("Simulation cancel failed");
   }

@@ -1,14 +1,14 @@
 const mongoose = require("mongoose");
-const chalk = require("chalk");
+const logger = require("./logger");
 
 const connectDB = async () => {
   try {
     const mongoURI = process.env.MONGODB_URI || "mongodb://localhost:27017";
     const dbName = process.env.DB_NAME || "Dashboard-Database";
     await mongoose.connect(mongoURI, { dbName });
-    console.log(chalk.green.bold("Database connected successfully"));
+    logger.info("Database connected successfully");
   } catch (error) {
-    console.error(chalk.red.bgWhite("31mDatabase connection error:"), error);
+    logger.error("Database connection error:", error);
     process.exit(1);
   }
 };
@@ -16,7 +16,7 @@ const connectDB = async () => {
 const closeDB = async () => {
   if (mongoose.connection.readyState === 1) {
     await mongoose.connection.close();
-    console.log("MongoDB connection closed");
+    logger.info("MongoDB connection closed");
   }
 };
 

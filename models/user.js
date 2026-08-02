@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema({
     required: [true, "Please provide a name"],
     minLength: [3, "Name must be at least 3 characters long"],
     maxLength: [50, "Name cannot exceed 50 characters"],
+    trim: true,
   },
   email: {
     type: String,
@@ -18,27 +19,17 @@ const userSchema = new mongoose.Schema({
     match: [
       /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
       "Please add a valid email",
-    ], //regex
+    ],
+    lowercase: true,
+    trim: true,
   },
   password: {
     type: String,
     require: true,
     minlength: [6, "Password must be at least 6 characters long"],
-    maxlength: [12, "Password cannot exceed 12 characters"],
-    select: false, //don't return password in queries
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-    immutable: true,
-  },
-  updatedAt: {
-    //allow user to edit profile
-    type: Date,
-    default: Date.now,
+    select: false,
   },
   isVerified: {
-    //implement email verification
     type: Boolean,
     default: false,
   },
@@ -49,46 +40,77 @@ const userSchema = new mongoose.Schema({
     },
     default: "user",
   },
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
+  refreshToken: {
+    type: String,
+    select: false,
+    default: null,
+  },
   profilePicture: {
-    //implement s3 to store image and save url
     type: String,
     default: null,
   },
   simulationCount: {
-    //update here and simulation collection
     type: Number,
     default: 0,
   },
-});
+}, { timestamps: true });
 
 userSchema.statics.login = async function (email, password) {
-  const user = await this.findOne({ email }).select("password"); //only return password and _id
+  const user = await this.findOne({ email }).select("+password +isActive");
 
   if (!user) {
     throw new Error("Invalid email or password");
+  }
+  if (!user.isActive) {
+    throw new Error("Account has been suspended");
   }
   const isPasswordValid = await bcrypt.compare(password, user.password);
   if (!isPasswordValid) {
     throw new Error("Invalid email or password");
   }
-  return user; //return user object, then call generateJwtToken function
+  return user;
 };
 
 userSchema.statics.register = async function (username, email, password) {
+  if (!username || !email || !password) {
+    throw new Error("All fields (username, email, password) are required");
+  }
   const exist = await this.findOne({ email });
   if (exist) {
     throw new Error("User already exists");
   }
-  //this.create triggers pre 'save' middleware, this.insertOne skip middleware straight save no hashing
+  if (password.length > 12) {
+    throw new Error("Password cannot exceed 12 characters");
+  }
   return await this.create({username, email, password});
 };
-
-userSchema.methods.executeSimulation = async function () {};
 
 userSchema.methods.generateJwtToken = function () {
   return jwt.sign({ userId: this._id.toString() }, process.env.JWT_SECRET, {
     expiresIn: "1h",
   });
+};
+
+userSchema.methods.generateRefreshToken = function () {
+  return jwt.sign(
+    { userId: this._id.toString(), jti: Date.now().toString() + Math.random().toString(36).slice(2) },
+    process.env.JWT_REFRESH_SECRET,
+    { expiresIn: "7d" }
+  );
+};
+
+userSchema.methods.saveRefreshToken = async function (token) {
+  this.refreshToken = token;
+  return await this.save();
+};
+
+userSchema.methods.clearRefreshToken = async function () {
+  this.refreshToken = null;
+  return await this.save();
 };
 
 userSchema.methods.modifyEmail = async function (newEmail){
