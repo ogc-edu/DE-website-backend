@@ -6,7 +6,7 @@ beforeAll(async () => {
   process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "test-jwt-refresh-secret";
   process.env.MONGODB_URI =
     process.env.MONGODB_URI_TEST ||
-    "mongodb://localhost:27017/Dashboard-Test-Database?replicaSet=replicaset&directConnection=true";
+    "mongodb://root:password123@localhost:27017/Dashboard-Test-Database?directConnection=true&authSource=admin";
   process.env.DB_NAME = "Dashboard-Test-Database";
 
   await connectDB();

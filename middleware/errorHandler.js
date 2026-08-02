@@ -25,6 +25,10 @@ const errorHandler = (err, req, res, next) => {
     error = { statusCode: 400, message: message.join(", ") };
   }
 
+  if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
+    error = { statusCode: 401, message: "Token is not valid or has expired" };
+  }
+
   if (err.name === "Error") {
     error.statusCode = 400;
   }

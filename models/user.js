@@ -25,7 +25,7 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    require: true,
+    required: true,
     minlength: [6, "Password must be at least 6 characters long"],
     select: false,
   },
@@ -112,15 +112,6 @@ userSchema.methods.clearRefreshToken = async function () {
   this.refreshToken = null;
   return await this.save();
 };
-
-userSchema.methods.modifyEmail = async function (newEmail){
-  const exist = await this.findOne({email: newEmail});
-  if(!exist){
-    throw new Error("Email does not exists");
-  }
-  this.email = newEmail;
-  return this.save();
-}
 
 //middleware before saving new user,
 //used async because bcrypt is time-consuming
