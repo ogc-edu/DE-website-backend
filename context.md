@@ -1,6 +1,6 @@
 # context.md — DE Research Dashboard Backend
 
-Living context document for this repo. Read this first, then `README.md`, `PRD.md`, and `docs/` for depth. Last verified: scan of working tree (clean, all committed).
+Living context document for this repo. Read this first, then `README.md`, `PRD.md`, and `docs/` for depth. Last verified: scan of working tree — **almost clean, but `.env.example` is untracked** (should be committed; `.env` is gitignored).
 
 ## What this project is
 
@@ -114,8 +114,8 @@ docker-compose up --build   # mongo (atlas-local, replica set "replicaset") + ba
 - Simulation: create (Cartesian `totalModels`), list (pagination + status filter), single, results, delete, cancel — all ownership-checked.
 - Admin: users list/get/suspend, simulations list/delete, queue stub.
 - Validation (Zod), structured error handling, winston logging, Swagger docs.
-- Docker multi-stage + compose; docs/ suite; 4 Jest/Supertest suites — **58/58 tests passing locally** against the atlas-local container (fixed `tests/setup.js` URI).
-- `.env.example` added; local `.env` created (gitignored).
+- Docker multi-stage + compose; docs/ suite; 4 Jest/Supertest suites — **58 test cases** (18 auth + 16 admin + 15 simulation + 9 user) verified by grep; **last executed run was 58/58 passing locally** against the atlas-local container (fixed `tests/setup.js` URI). Note: docker/Mongo currently unavailable on this machine, so tests were not re-run during the last audit.
+- `.env.example` created but **uncommitted** (git status: `?? .env.example` — commit it); local `.env` created (gitignored).
 - Quick-win bug fixes: `/verify` invalid/expired token → 401 (was 500); removed dead `User.modifyEmail`; fixed `password` schema `require:`→`required:` typo.
 
 **In progress / stubbed 🟡**
@@ -139,7 +139,7 @@ docker-compose up --build   # mongo (atlas-local, replica set "replicaset") + ba
 ## Local dev/test environment (verified working)
 
 - MongoDB: `atlas-mongo` docker container (root:password123, auth enforced, RS name = container hostname). Connection string used in `.env`/`.env.example`/`tests/setup.js`: `mongodb://root:password123@localhost:27017/<db>?directConnection=true&authSource=admin` — no `replicaSet` param (name is hostname, changes per recreate; app/tests don't use transactions).
-- `npm test` (58/58) and `npm run dev` both work against it.
+- `npm test` (58/58 as of the last run) and `npm run dev` both work against it. Node v26.5.1 / npm 11.17.0 available on the dev machine.
 
 ## Conventions
 
