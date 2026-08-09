@@ -1,17 +1,40 @@
 const simulations = require("../models/simulation");
+const { sendSimulationJob } = require("../config/sqs");
+const logger = require("../config/logger");
 
 const createSimulation = async (req, res, next) => {
   try {
-    const { functions, methods } = req.body;
+    const { functions, methods, np, f, cr, gen, dim } = req.body;
     const userId = req.userId;
     const simulation = await simulations.createSimulation(
       userId,
       functions,
-      methods
+      methods,
+      { np, f, cr, gen, dim }
     );
+
+    // Enqueue one SQS job per created simulation so EC2 workers can pick it up.
+    // Failure here must not 500 the create (the record exists) — log it and
+    // mark the simulation failed so it never hangs in "pending".
+    let queued = true;
+    try {
+      await sendSimulationJob(simulation);
+    } catch (err) {
+      queued = false;
+      logger.error(`Failed to enqueue simulation ${simulation._id} to SQS: ${err.message}`);
+      await simulations
+        .findByIdAndUpdate(simulation._id, { status: "failed" })
+        .catch((updateErr) =>
+          logger.error(`Failed to mark simulation ${simulation._id} as failed: ${updateErr.message}`)
+        );
+    }
+
     res.status(201).json({
-      message: "Simulation created successfully",
+      message: queued
+        ? "Simulation created successfully"
+        : "Simulation created but failed to enqueue to the job queue",
       simulationId: simulation._id.toString(),
+      queued,
     });
   } catch (err) {
     next(err);

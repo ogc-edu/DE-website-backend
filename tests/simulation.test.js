@@ -2,6 +2,8 @@ const request = require("supertest");
 const app = require("../app");
 const User = require("../models/user");
 const Simulation = require("../models/simulation");
+// Mocked in tests/setup.js — grab the handles to assert on SQS payloads.
+const { SendMessageCommand, __sqsSendMock } = require("@aws-sdk/client-sqs");
 
 describe("Simulation Endpoints", () => {
   let token;
@@ -23,6 +25,8 @@ describe("Simulation Endpoints", () => {
   };
 
   beforeEach(async () => {
+    __sqsSendMock.mockClear();
+    SendMessageCommand.mockClear();
     const user = await User.register(testUser.username, testUser.email, testUser.password);
     userId = user._id.toString();
     token = user.generateJwtToken();
@@ -63,6 +67,98 @@ describe("Simulation Endpoints", () => {
 
       expect(res.statusCode).toBe(400);
       expect(res.body).toHaveProperty("errors");
+    });
+
+    it("should persist DE algorithm parameters (np/f/cr/gen/dim)", async () => {
+      const res = await request(app)
+        .post("/api/v1/simulation/create")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ ...validSimInput, np: 20, f: 0.7, cr: 0.8, gen: 500, dim: 10 });
+
+      expect(res.statusCode).toBe(201);
+      const sim = await Simulation.findById(res.body.simulationId);
+      expect(sim.np).toBe(20);
+      expect(sim.f).toBe(0.7);
+      expect(sim.cr).toBe(0.8);
+      expect(sim.gen).toBe(500);
+      expect(sim.dim).toBe(10);
+    });
+
+    it("should apply default DE parameters when omitted", async () => {
+      const res = await request(app)
+        .post("/api/v1/simulation/create")
+        .set("Authorization", `Bearer ${token}`)
+        .send(validSimInput);
+
+      const sim = await Simulation.findById(res.body.simulationId);
+      expect(sim.np).toBe(15);
+      expect(sim.f).toBe(0.5);
+      expect(sim.cr).toBe(0.9);
+      expect(sim.gen).toBe(1000);
+      expect(sim.dim).toBe(30);
+    });
+
+    it("should return 400 for out-of-range DE parameters (Zod)", async () => {
+      const res = await request(app)
+        .post("/api/v1/simulation/create")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ ...validSimInput, np: 5, dim: 31, cr: 5 });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toHaveProperty("errors");
+    });
+
+    it("should enqueue exactly one SQS job with the worker contract", async () => {
+      const res = await request(app)
+        .post("/api/v1/simulation/create")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ ...validSimInput, np: 20, f: 0.7, cr: 0.8, gen: 500, dim: 10 });
+
+      expect(res.statusCode).toBe(201);
+      expect(res.body.queued).toBe(true);
+      expect(__sqsSendMock).toHaveBeenCalledTimes(1);
+
+      const commandInput = SendMessageCommand.mock.calls[0][0];
+      expect(commandInput.QueueUrl).toBe(process.env.SQS_QUEUE_URL);
+      const body = JSON.parse(commandInput.MessageBody);
+      expect(body).toEqual({
+        simulationId: res.body.simulationId,
+        bf: "1,2",
+        mutation: "1,2",
+        crossover: "1",
+        selection: "1",
+        cr: 0.8,
+        f: 0.7,
+        np: 20,
+        gen: 500,
+        dim: 10,
+      });
+    });
+
+    it("should mark the simulation failed but still return 201 when SQS enqueue fails", async () => {
+      __sqsSendMock.mockRejectedValueOnce(new Error("SQS unavailable"));
+
+      const res = await request(app)
+        .post("/api/v1/simulation/create")
+        .set("Authorization", `Bearer ${token}`)
+        .send(validSimInput);
+
+      expect(res.statusCode).toBe(201);
+      expect(res.body.queued).toBe(false);
+      const sim = await Simulation.findById(res.body.simulationId);
+      expect(sim.status).toBe("failed");
+    });
+
+    it("should accept the 'running' status set by workers", async () => {
+      const sim = await Simulation.createSimulation(userId, validSimInput.functions, validSimInput.methods);
+      const updated = await Simulation.findByIdAndUpdate(
+        sim._id,
+        { status: "running", progress: 10 },
+        { new: true }
+      );
+      expect(updated.status).toBe("running");
+      const simAfter = await Simulation.findById(sim._id);
+      expect(simAfter.status).toBe("running");
     });
   });
 

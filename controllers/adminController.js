@@ -1,5 +1,6 @@
 const User = require("../models/user");
 const Simulation = require("../models/simulation");
+const sqsConfig = require("../config/sqs");
 
 const getAllUsers = async (req, res, next) => {
   try {
@@ -94,11 +95,15 @@ const deleteAnySimulation = async (req, res, next) => {
 
 const getQueueStatus = async (req, res, next) => {
   try {
-    res.status(200).json({
-      message: "SQS integration not configured",
-      queue: null,
-    });
+    const queue = await sqsConfig.getQueueStatus();
+    res.status(200).json({ queue });
   } catch (err) {
+    if (err.message === "SQS_QUEUE_URL is not configured") {
+      return res.status(503).json({
+        message: "SQS queue not configured (SQS_QUEUE_URL missing)",
+        queue: null,
+      });
+    }
     next(err);
   }
 };

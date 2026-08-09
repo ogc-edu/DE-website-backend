@@ -312,9 +312,17 @@ Create a new simulation. The system computes `totalModels` as the Cartesian prod
     "mutation": [1, 2],
     "crossover": [1, 2],
     "selection": [1, 2]
-  }
+  },
+  "np": 20,
+  "f": 0.7,
+  "cr": 0.8,
+  "gen": 500,
+  "dim": 10
 }
 ```
+`np` (10–40, default 15), `f` (0.1–2.0, default 0.5), `cr` (0.01–1.0, default 0.9), `gen` (≥1, default 1000), `dim` (1–30 — must match de.cpp, default 30) are all optional; defaults are applied server-side.
+
+On success the backend also **enqueues one SQS job** per simulation with the worker contract `{ simulationId, bf, mutation, crossover, selection, cr, f, np, gen, dim }` (arrays as comma-joined strings). If the SQS push fails, the simulation is marked `failed` and the response includes `"queued": false`.
 
 **Validation rules:**
 | Field | Type | Range | Min items |
@@ -637,19 +645,28 @@ Delete any simulation regardless of ownership.
 
 ### GET /api/v1/admin/queue
 
-Get the SQS queue status. Currently a stub — returns a placeholder response since SQS integration is not yet implemented.
+Get real SQS queue metrics for the simulation job queue.
 
 **Auth required:** Bearer token + Admin role
 
 **Responses:**
 | Status | Description |
 |---|---|
-| 200 | Queue status |
+| 200 | Real queue metrics (depth, in-flight, delayed, oldest message age) |
+| 503 | SQS queue not configured (`SQS_QUEUE_URL` missing) |
 
 **Example response:**
 ```json
 {
-  "message": "SQS integration not configured",
+  "queue": {
+    "queueUrl": "https://sqs.ap-southeast-1.amazonaws.com/727974229118/DE-Queue",
+    "approximateNumberOfMessages": 3,
+    "approximateNumberOfMessagesNotVisible": 1,
+    "approximateNumberOfMessagesDelayed": 0,
+    "oldestMessageAge": 42
+  }
+}
+```ration not configured",
   "queue": null
 }
 ```

@@ -27,12 +27,48 @@ const simulationSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: {
-        values: ["pending", "completed", "failed", "cancelled"],
-        message: 'Status must be either pending, completed, failed, or cancelled',
+        values: ["pending", "running", "completed", "failed", "cancelled"],
+        message: 'Status must be either pending, running, completed, failed, or cancelled',
     },
     default: "pending",
     required: true,
     index: true,
+  },
+  // DE algorithm parameters (persisted so EC2 workers can run the job without
+  // any extra lookup; ranges must match de.cpp validation in DE-forEC2).
+  np: {
+    type: Number,
+    required: true,
+    default: 15,
+    min: [10, "Population size must be between 10 and 40"],
+    max: [40, "Population size must be between 10 and 40"],
+  },
+  f: {
+    type: Number,
+    required: true,
+    default: 0.5,
+    min: [0.1, "Scaling factor must be between 0.1 and 2.0"],
+    max: [2.0, "Scaling factor must be between 0.1 and 2.0"],
+  },
+  cr: {
+    type: Number,
+    required: true,
+    default: 0.9,
+    min: [0.01, "Crossover rate must be between 0.01 and 1.0"],
+    max: [1.0, "Crossover rate must be between 0.01 and 1.0"],
+  },
+  gen: {
+    type: Number,
+    required: true,
+    default: 1000,
+    min: [1, "Generations must be at least 1"],
+  },
+  dim: {
+    type: Number,
+    required: true,
+    default: 30,
+    min: [1, "Dimension must be between 1 and 30 (de.cpp limit)"],
+    max: [30, "Dimension must be between 1 and 30 (de.cpp limit)"],
   },
   functions: {
     type: [Number],
@@ -101,14 +137,28 @@ const simulationSchema = new mongoose.Schema({
 simulationSchema.statics.createSimulation = async function (
   userId,
   functions,
-  methods
+  methods,
+  params = {}
 ) {
   const totalModels =
     functions.length *
     methods.mutation.length *
     methods.crossover.length *
     methods.selection.length;
-  return await this.create({ userId, functions, methods, totalModels });
+  // Apply defaults so direct model calls (and the Zod-parsed request body,
+  // which already carries defaults) always persist a complete job spec.
+  const { np = 15, f = 0.5, cr = 0.9, gen = 1000, dim = 30 } = params;
+  return await this.create({
+    userId,
+    functions,
+    methods,
+    totalModels,
+    np,
+    f,
+    cr,
+    gen,
+    dim,
+  });
 };
 
 //return all simulations for user simulation page

@@ -46,9 +46,26 @@ const { createSimulationSchema } = require("../validators/simulationValidators")
  *                     type: array
  *                     items:
  *                       type: integer
+ *               np:
+ *                 type: number
+ *                 description: Population size (10-40, default 15)
+ *               f:
+ *                 type: number
+ *                 description: Scaling factor (0.1-2.0, default 0.5)
+ *               cr:
+ *                 type: number
+ *                 description: Crossover rate (0.01-1.0, default 0.9)
+ *               gen:
+ *                 type: integer
+ *                 description: Number of generations (>=1, default 1000)
+ *               dim:
+ *                 type: integer
+ *                 description: Dimension (1-30, must match de.cpp; default 30)
  *     responses:
  *       201:
- *         description: Simulation created
+ *         description: Simulation created (and enqueued to SQS)
+ *       400:
+ *         description: Validation failed
  *       401:
  *         description: Unauthorized
  */

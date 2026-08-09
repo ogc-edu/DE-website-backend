@@ -131,7 +131,9 @@ router.delete("/simulations/:id", deleteAnySimulation);
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Queue status
+ *         description: Real SQS queue metrics (depth, in-flight, delayed, oldest message age)
+ *       503:
+ *         description: SQS queue not configured (SQS_QUEUE_URL missing)
  */
 router.get("/queue", getQueueStatus);
 

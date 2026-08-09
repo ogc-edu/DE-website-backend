@@ -2,6 +2,8 @@ const request = require("supertest");
 const app = require("../app");
 const User = require("../models/user");
 const Simulation = require("../models/simulation");
+// Mocked in tests/setup.js — used to return canned SQS queue attributes.
+const { GetQueueAttributesCommand, __sqsSendMock } = require("@aws-sdk/client-sqs");
 
 describe("Admin Endpoints", () => {
   let userToken;
@@ -209,13 +211,63 @@ describe("Admin Endpoints", () => {
   });
 
   describe("GET /api/v1/admin/queue", () => {
-    it("should return queue status stub", async () => {
+    it("should return real SQS queue metrics", async () => {
+      __sqsSendMock.mockResolvedValue({
+        Attributes: {
+          ApproximateNumberOfMessages: "3",
+          ApproximateNumberOfMessagesNotVisible: "1",
+          ApproximateNumberOfMessagesDelayed: "2",
+          OldestMessageAge: "42",
+        },
+      });
+
       const res = await request(app)
         .get("/api/v1/admin/queue")
         .set("Authorization", `Bearer ${adminToken}`);
 
       expect(res.statusCode).toBe(200);
-      expect(res.body).toHaveProperty("message");
+      expect(res.body.queue).toEqual({
+        queueUrl: process.env.SQS_QUEUE_URL,
+        approximateNumberOfMessages: 3,
+        approximateNumberOfMessagesNotVisible: 1,
+        approximateNumberOfMessagesDelayed: 2,
+        oldestMessageAge: 42,
+      });
+
+      const commandInput = GetQueueAttributesCommand.mock.calls[0][0];
+      expect(commandInput.QueueUrl).toBe(process.env.SQS_QUEUE_URL);
+      expect(commandInput.AttributeNames).toEqual(
+        expect.arrayContaining([
+          "ApproximateNumberOfMessages",
+          "ApproximateNumberOfMessagesNotVisible",
+          "ApproximateNumberOfMessagesDelayed",
+          "OldestMessageAge",
+        ])
+      );
+    });
+
+    it("should return 503 when SQS queue URL is not configured", async () => {
+      const sqsConfig = require("../config/sqs");
+      const spy = jest
+        .spyOn(sqsConfig, "getQueueStatus")
+        .mockRejectedValue(new Error("SQS_QUEUE_URL is not configured"));
+
+      const res = await request(app)
+        .get("/api/v1/admin/queue")
+        .set("Authorization", `Bearer ${adminToken}`);
+
+      expect(res.statusCode).toBe(503);
+      expect(res.body.message).toContain("not configured");
+      expect(res.body.queue).toBeNull();
+      spy.mockRestore();
+    });
+
+    it("should deny regular users (403)", async () => {
+      const res = await request(app)
+        .get("/api/v1/admin/queue")
+        .set("Authorization", `Bearer ${userToken}`);
+
+      expect(res.statusCode).toBe(403);
     });
   });
 });

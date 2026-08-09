@@ -31,8 +31,10 @@ app.js                 # Express app: helmet/json/cookie/cors/morgan → routes 
 server.js              # Entry: connectDB + listen(PORT||3000); SIGTERM → closeDB
 config/database.js     # mongoose.connect(MONGODB_URI, { dbName: DB_NAME }); connectDB/closeDB
 config/logger.js       # winston: console + logs/error.log + logs/combined.log
+config/s3.js           # S3 client + profileImageKey/buildPublicObjectUrl helpers (env read at require time)
+config/sqs.js          # SQS client + sendSimulationJob/getQueueStatus helpers (env read at require time, same convention)
 models/user.js         # "users" collection; statics login/register; methods generateJwtToken/generateRefreshToken/save/clearRefreshToken
-models/simulation.js   # "simulations" collection; statics createSimulation/getSimulation/getSimulationById/deleteSimulation/cancelSimulation
+models/simulation.js   # "simulations" collection; statics createSimulation/getSimulation/getSimulationById/deleteSimulation/cancelSimulation; DE params np/f/cr/gen/dim; status includes "running"
 controllers/           # authController(verify,refresh,logout) loginController registerController userController simulationController adminController healthController
 routes/index.js        # /health; /simulation (auth); /admin (auth+admin); /user (auth); / (auth routes: login/register/verify/refresh/logout)
 validators/            # authValidators.js, simulationValidators.js (Zod schemas)
@@ -48,7 +50,7 @@ Dockerfile, Dockerfile.dev, docker-compose.yml, start-dev.bat (Windows dev boots
 `username` (3–50), `email` (unique, lowercase, regex), `password` (`select:false`, hashed pre-save — note typo `require:true` instead of `required:true`), `isVerified` (unused, default false), `role` (`user`|`admin`, default `user`), `isActive` (default true), `refreshToken` (`select:false`, rotation), `profilePicture` (unused), `simulationCount` (unused).
 
 **Simulation** (`models/simulation.js`, collection `simulations`, timestamps):
-`userId` (ObjectId, indexed, ownership check basis), `functions`/`methods.{mutation,crossover,selection}` (validated int arrays, ranged 1–10/1–4/1–2), `totalModels` (Cartesian product at creation), `completedModels` (default 0), `progress` (0–100), `status` (`pending|completed|failed|cancelled`, default `pending`, indexed), `simulationData` (array of `{functionId, mutationId, crossoverId, selectionId, lowestFitness}` — the results grid; schema exists, **no code writes it yet**).
+`userId` (ObjectId, indexed, ownership check basis), `functions`/`methods.{mutation,crossover,selection}` (validated int arrays, ranged 1–10/1–4/1–2), DE algorithm params `np` (10–40, default 15), `f` (0.1–2.0, default 0.5), `cr` (0.01–1.0, default 0.9), `gen` (≥1, default 1000), `dim` (1–30 — matches de.cpp limit, default 30), `totalModels` (Cartesian product at creation), `completedModels` (default 0), `progress` (0–100), `status` (`pending|running|completed|failed|cancelled`, default `pending`, indexed — workers set `running`), `simulationData` (array of `{functionId, mutationId, crossoverId, selectionId, lowestFitness}` — the results grid; schema exists, **no code writes it yet**).
 
 ## API surface (`/api/v1`)
 
@@ -63,7 +65,7 @@ Dockerfile, Dockerfile.dev, docker-compose.yml, start-dev.bat (Windows dev boots
 | GET | `/user/profile` | Bearer | excludes password/refreshToken |
 | PATCH | `/user/profile` | Bearer | username/email; email uniqueness checked |
 | PATCH | `/user/password` | Bearer | currentPassword + newPassword (≤12 chars) |
-| POST | `/simulation/create` | Bearer | Zod; computes `totalModels`; **does NOT enqueue to SQS** |
+| POST | `/simulation/create` | Bearer | Zod (optional np/f/cr/gen/dim); computes `totalModels`; **enqueues one SQS job per simulation** (worker contract: simulationId, bf, mutation, crossover, selection, cr, f, np, gen, dim) |
 | GET | `/simulation/get` | Bearer | `?page=&limit=&status=`; limit 0 = unpaginated |
 | GET | `/simulation/get/:id/results` | Bearer | progress + `simulationData` |
 | GET | `/simulation/get/:id` | Bearer | ownership check |
@@ -74,7 +76,7 @@ Dockerfile, Dockerfile.dev, docker-compose.yml, start-dev.bat (Windows dev boots
 | PATCH | `/admin/users/:id/suspend` | Bearer+admin | toggles isActive; cannot suspend admins |
 | GET | `/admin/simulations` | Bearer+admin | optional `?userId=` filter |
 | DELETE | `/admin/simulations/:id` | Bearer+admin | |
-| GET | `/admin/queue` | Bearer+admin | **stub** — returns "SQS integration not configured" |
+| GET | `/admin/queue` | Bearer+admin | real SQS metrics: ApproximateNumberOfMessages / NotVisible / Delayed + OldestMessageAge (503 if SQS_QUEUE_URL missing) |
 | GET | `/docs` | — | Swagger UI |
 
 ## Auth flow
@@ -88,7 +90,7 @@ Dockerfile, Dockerfile.dev, docker-compose.yml, start-dev.bat (Windows dev boots
 
 ## Environment variables
 
-Required at runtime: `JWT_SECRET`, `JWT_REFRESH_SECRET` (no defaults → must set). Optional: `MONGODB_URI` (default `mongodb://localhost:27017`), `DB_NAME` (default `Dashboard-Database`), `PORT` (3000), `CORS_ORIGIN` (comma-separated; default `true` = reflect any), `LOG_LEVEL` (info), `NODE_ENV` (switches cookie `secure`, winston format), `MONGODB_URI_TEST` (tests; default `Dashboard-Test-Database?replicaSet=replicaset&directConnection=true`).
+Required at runtime: `JWT_SECRET`, `JWT_REFRESH_SECRET` (no defaults → must set). Optional: `MONGODB_URI` (default `mongodb://localhost:27017`), `DB_NAME` (default `Dashboard-Database`), `PORT` (3000), `CORS_ORIGIN` (comma-separated; default `true` = reflect any), `LOG_LEVEL` (info), `NODE_ENV` (switches cookie `secure`, winston format), `MONGODB_URI_TEST` (tests; default `Dashboard-Test-Database?replicaSet=replicaset&directConnection=true`). AWS: `AWS_REGION`, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (empty → default credential chain / EC2 IAM role), `S3_BUCKET_NAME` (profile pics), `SQS_QUEUE_URL` (full queue URL, e.g. `https://sqs.ap-southeast-1.amazonaws.com/727974229118/DE-Queue`; without it simulation create still returns 201 but `queued: false` + sim marked failed, and `/admin/queue` returns 503).
 
 > **No `.env` and no `.env.example` exist in the repo** (README references `.env.example`, docs/setup.md documents the vars). Create `.env` from docs/setup.md before running.
 
@@ -112,15 +114,21 @@ docker-compose up --build   # mongo (atlas-local, replica set "replicaset") + ba
 - Full auth: register/login/verify/refresh-rotation/logout, RBAC (user/admin), suspension.
 - User profile: get/update/change-password (Zod-validated).
 - Simulation: create (Cartesian `totalModels`), list (pagination + status filter), single, results, delete, cancel — all ownership-checked.
-- Admin: users list/get/suspend, simulations list/delete, queue stub.
+- Admin: users list/get/suspend, simulations list/delete, **real queue metrics** (GetQueueAttributes).
 - Validation (Zod), structured error handling, winston logging, Swagger docs.
 - Docker multi-stage + compose; docs/ suite; 4 Jest/Supertest suites — **58 test cases** (18 auth + 16 admin + 15 simulation + 9 user) verified by grep; **last executed run was 58/58 passing locally** against the atlas-local container (fixed `tests/setup.js` URI). Note: docker/Mongo currently unavailable on this machine, so tests were not re-run during the last audit.
 - `.env.example` created but **uncommitted** (git status: `?? .env.example` — commit it); local `.env` created (gitignored).
 - Quick-win bug fixes: `/verify` invalid/expired token → 401 (was 500); removed dead `User.modifyEmail`; fixed `password` schema `require:`→`required:` typo.
 
+**Done ✅ (SQS producer)**
+- `config/sqs.js` (NEW): `SQSClient` (region from `AWS_REGION`) + `SQS_QUEUE_URL` (env, read at require time like `config/s3.js`), plus `sendSimulationJob(simulation)` (builds the exact worker contract body, comma-joined arrays) and `getQueueStatus()` (GetQueueAttributes → parsed metrics).
+- `POST /simulation/create` now **enqueues one SQS job per simulation** after the DB insert. On SQS failure the sim is marked `failed` and the 201 response includes `queued: false` (never silently stuck in pending).
+- Simulation model: DE params `np/f/cr/gen/dim` persisted (Zod-validated, defaults applied); `running` added to the status enum.
+- `GET /admin/queue` returns real metrics (depth, in-flight, delayed, oldest message age); 503 when `SQS_QUEUE_URL` is unset.
+- Tests: +8 (SQS contract body, param persistence/defaults, 400 ranges, running status, enqueue-failure → failed, queue metrics, 503) — **73/73 passing**; live smoke test against a real queue (`DE-Queue` in ap-southeast-1) verified message body + metrics.
+
 **In progress / stubbed 🟡**
-- SQS queue: `GET /admin/queue` is a stub; `createSimulation` persists only — **no SQS push**.
-- Progress/results pipeline: `completedModels`, `progress`, `simulationData` schema-ready but nothing writes them (workers are out-of-scope/separate repo per PRD, but there is no worker or producer yet).
+- Progress/results pipeline: `completedModels`, `progress`, `simulationData` schema-ready but nothing writes them (EC2 worker is the separate `DE-forEC2` repo).
 
 **Not started ❌ (mostly PRD out-of-scope)**
 - EC2 worker code (separate repo), email verification (`isVerified`), rate limiting, CI/CD, S3/profile pictures, Secrets Manager.
