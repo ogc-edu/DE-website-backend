@@ -53,6 +53,11 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  affiliation: {
+    type: String,
+    default: "",
+    trim: true,
+  },
   simulationCount: {
     type: Number,
     default: 0,
