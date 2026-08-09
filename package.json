@@ -11,6 +11,8 @@
     "test:coverage": "cross-env NODE_ENV=test jest --coverage"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1106.0",
+    "@aws-sdk/s3-request-presigner": "^3.1106.0",
     "bcrypt": "^6.0.0",
     "chalk": "^4.1.2",
     "cookie-parser": "^1.4.7",

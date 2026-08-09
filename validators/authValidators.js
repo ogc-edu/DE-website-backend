@@ -39,6 +39,11 @@ const updateProfileSchema = z.object({
     .toLowerCase()
     .trim()
     .optional(),
+  affiliation: z
+    .string()
+    .max(100, "Affiliation cannot exceed 100 characters")
+    .trim()
+    .optional(),
 });
 
 const changePasswordSchema = z.object({
@@ -49,9 +54,14 @@ const changePasswordSchema = z.object({
     .max(12, "Password cannot exceed 12 characters"),
 });
 
+const confirmPictureSchema = z.object({
+  versionId: z.string().min(1, "Version id cannot be empty").max(64).optional(),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
   updateProfileSchema,
   changePasswordSchema,
+  confirmPictureSchema,
 };

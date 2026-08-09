@@ -2,6 +2,11 @@ const request = require("supertest");
 const app = require("../app");
 const User = require("../models/user");
 
+// Do not hit AWS in tests; return a canned presigned URL.
+jest.mock("@aws-sdk/s3-request-presigner", () => ({
+  getSignedUrl: jest.fn().mockResolvedValue("https://presigned.example.com/upload"),
+}));
+
 describe("User Profile Endpoints", () => {
   let token;
   let userId;
@@ -69,6 +74,16 @@ describe("User Profile Endpoints", () => {
       expect(res.statusCode).toBe(400);
       expect(res.body.message).toContain("already in use");
     });
+
+    it("should update affiliation", async () => {
+      const res = await request(app)
+        .patch("/api/v1/user/profile")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ affiliation: "University of Science" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.user).toHaveProperty("affiliation", "University of Science");
+    });
   });
 
   describe("PATCH /api/v1/user/password", () => {
@@ -111,6 +126,74 @@ describe("User Profile Endpoints", () => {
         .patch("/api/v1/user/password")
         .set("Authorization", `Bearer ${token}`)
         .send({ currentPassword: testUser.password, newPassword: "toolongpassword123" });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toHaveProperty("errors");
+    });
+  });
+
+  describe("GET /api/v1/user/profile/presign", () => {
+    it("should return a presigned upload URL for an allowed content type", async () => {
+      const res = await request(app)
+        .get("/api/v1/user/profile/presign")
+        .query({ contentType: "image/jpeg" })
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toHaveProperty("uploadUrl", "https://presigned.example.com/upload");
+      expect(res.body).toHaveProperty("key", `profile-images/${userId}`);
+      expect(res.body).toHaveProperty("contentType", "image/jpeg");
+      expect(res.body).toHaveProperty("expiresIn");
+    });
+
+    it("should reject an unsupported content type", async () => {
+      const res = await request(app)
+        .get("/api/v1/user/profile/presign")
+        .query({ contentType: "text/html" })
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body.message).toContain("Unsupported content type");
+    });
+
+    it("should return 401 without a token", async () => {
+      const res = await request(app).get("/api/v1/user/profile/presign").query({ contentType: "image/png" });
+
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
+  describe("POST /api/v1/user/profile/picture", () => {
+    it("should store the public profile picture URL with versionId cache-buster", async () => {
+      const res = await request(app)
+        .post("/api/v1/user/profile/picture")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ versionId: "abc123" });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.user).toHaveProperty("profilePicture");
+      expect(res.body.user.profilePicture).toBe(
+        `https://test-bucket.s3.us-east-1.amazonaws.com/profile-images/${userId}?v=abc123`
+      );
+    });
+
+    it("should store the URL without versionId when omitted", async () => {
+      const res = await request(app)
+        .post("/api/v1/user/profile/picture")
+        .set("Authorization", `Bearer ${token}`)
+        .send({});
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.user.profilePicture).toBe(
+        `https://test-bucket.s3.us-east-1.amazonaws.com/profile-images/${userId}`
+      );
+    });
+
+    it("should reject an empty versionId (Zod validation)", async () => {
+      const res = await request(app)
+        .post("/api/v1/user/profile/picture")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ versionId: "" });
 
       expect(res.statusCode).toBe(400);
       expect(res.body).toHaveProperty("errors");

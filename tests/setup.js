@@ -1,6 +1,11 @@
 const mongoose = require("mongoose");
 const { connectDB, closeDB } = require("../config/database");
 
+// Set before the app module is imported: config/s3.js reads these eagerly at
+// require time (dotenv does not override already-set variables).
+process.env.AWS_REGION = "us-east-1";
+process.env.S3_BUCKET_NAME = "test-bucket";
+
 beforeAll(async () => {
   process.env.JWT_SECRET = process.env.JWT_SECRET || "test-jwt-secret";
   process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "test-jwt-refresh-secret";
