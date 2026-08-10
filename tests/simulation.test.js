@@ -301,5 +301,16 @@ describe("Simulation Endpoints", () => {
       expect(res.statusCode).toBe(200);
       expect(res.body).toHaveProperty("message", "Simulation cancelled successfully");
     });
+
+    it("should reject cancelling a completed simulation", async () => {
+      const sim = await Simulation.createSimulation(userId, validSimInput.functions, validSimInput.methods);
+      await Simulation.findByIdAndUpdate(sim._id, { status: "completed" });
+      const res = await request(app)
+        .post(`/api/v1/simulation/cancel/${sim._id}`)
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body.error).toContain("Cannot cancel");
+    });
   });
 });

@@ -80,7 +80,7 @@ userSchema.statics.login = async function (email, password) {
   return user;
 };
 
-userSchema.statics.register = async function (username, email, password) {
+userSchema.statics.register = async function (username, email, password, affiliation = "") {
   if (!username || !email || !password) {
     throw new Error("All fields (username, email, password) are required");
   }
@@ -91,7 +91,7 @@ userSchema.statics.register = async function (username, email, password) {
   if (password.length > 12) {
     throw new Error("Password cannot exceed 12 characters");
   }
-  return await this.create({username, email, password});
+  return await this.create({ username, email, password, affiliation });
 };
 
 userSchema.methods.generateJwtToken = function () {

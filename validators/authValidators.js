@@ -15,6 +15,11 @@ const registerSchema = z.object({
     .string()
     .min(6, "Password must be at least 6 characters long")
     .max(12, "Password cannot exceed 12 characters"),
+  affiliation: z
+    .string()
+    .max(100, "Affiliation cannot exceed 100 characters")
+    .trim()
+    .optional(),
 });
 
 const loginSchema = z.object({

@@ -9,7 +9,7 @@ const verify = async (req, res, next) => {
   }
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId).select("_id username email affiliation profilePicture");
+    const user = await User.findById(decoded.userId).select("_id username email affiliation profilePicture role");
     if (!user) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -19,6 +19,7 @@ const verify = async (req, res, next) => {
       email: user.email,
       affiliation: user.affiliation,
       profilePicture: user.profilePicture,
+      role: user.role,
     };
     res.status(200).json({ status: true, userData: userData });
   } catch (err) {

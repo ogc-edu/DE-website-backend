@@ -225,6 +225,11 @@ simulationSchema.statics.cancelSimulation = async function (
   if (simulation.userId.toString() !== userId) {
     throw new Error("Unauthorized");
   }
+  // Only in-flight jobs can be cancelled — terminal results must not be
+  // overwritten by a late cancel (workers check status before spawning).
+  if (simulation.status !== "pending" && simulation.status !== "running") {
+    throw new Error(`Cannot cancel a simulation in "${simulation.status}" status`);
+  }
   const success = await this.findByIdAndUpdate(
     simulationId,
     { status: "cancelled" },
