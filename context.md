@@ -21,7 +21,7 @@ Backend API for a **Differential Evolution (DE) research dashboard**. Researcher
 | Logging | Winston + Morgan (`config/logger.js`, writes `logs/*.log`) |
 | Security | Helmet, CORS, httpOnly cookies |
 | API docs | swagger-jsdoc + swagger-ui-express at `/api/v1/docs` (annotations live in `routes/*.js`) |
-| Testing | Jest 30 + Supertest 7 (4 suites, ~59 cases; README says 58) |
+| Testing | Jest 30 + Supertest 7 (4 suites, **73/73 passing**) |
 | Containers | Multi-stage `Dockerfile`, `Dockerfile.dev`, `docker-compose.yml` (MongoDB atlas-local + backend) |
 
 ## Layout
@@ -50,7 +50,7 @@ Dockerfile, Dockerfile.dev, docker-compose.yml, start-dev.bat (Windows dev boots
 `username` (3–50), `email` (unique, lowercase, regex), `password` (`select:false`, hashed pre-save — note typo `require:true` instead of `required:true`), `isVerified` (unused, default false), `role` (`user`|`admin`, default `user`), `isActive` (default true), `refreshToken` (`select:false`, rotation), `profilePicture` (unused), `simulationCount` (unused).
 
 **Simulation** (`models/simulation.js`, collection `simulations`, timestamps):
-`userId` (ObjectId, indexed, ownership check basis), `functions`/`methods.{mutation,crossover,selection}` (validated int arrays, ranged 1–10/1–4/1–2), DE algorithm params `np` (10–40, default 15), `f` (0.1–2.0, default 0.5), `cr` (0.01–1.0, default 0.9), `gen` (≥1, default 1000), `dim` (1–30 — matches de.cpp limit, default 30), `totalModels` (Cartesian product at creation), `completedModels` (default 0), `progress` (0–100), `status` (`pending|running|completed|failed|cancelled`, default `pending`, indexed — workers set `running`), `simulationData` (array of `{functionId, mutationId, crossoverId, selectionId, lowestFitness}` — the results grid; schema exists, **no code writes it yet**).
+`userId` (ObjectId, indexed, ownership check basis), `functions`/`methods.{mutation,crossover,selection}` (validated int arrays, ranged 1–10/1–4/1–2), DE algorithm params `np` (10–40, default 15), `f` (0.1–2.0, default 0.5), `cr` (0.01–1.0, default 0.9), `gen` (≥1, default 1000), `dim` (1–30 — matches de.cpp limit, default 30), `totalModels` (Cartesian product at creation), `completedModels` (default 0), `progress` (0–100), `status` (`pending|running|completed|failed|cancelled`, default `pending`, indexed — workers set `running`), `simulationData` (array of `{functionId, mutationId, crossoverId, selectionId, lowestFitness}` — the results grid, written by the **EC2 worker** (`DE-forEC2/spawner.js`, Task 2) and served back via `GET /simulation/get/:id/results`).
 
 ## API surface (`/api/v1`)
 
@@ -92,12 +92,12 @@ Dockerfile, Dockerfile.dev, docker-compose.yml, start-dev.bat (Windows dev boots
 
 Required at runtime: `JWT_SECRET`, `JWT_REFRESH_SECRET` (no defaults → must set). Optional: `MONGODB_URI` (default `mongodb://localhost:27017`), `DB_NAME` (default `Dashboard-Database`), `PORT` (3000), `CORS_ORIGIN` (comma-separated; default `true` = reflect any), `LOG_LEVEL` (info), `NODE_ENV` (switches cookie `secure`, winston format), `MONGODB_URI_TEST` (tests; default `Dashboard-Test-Database?replicaSet=replicaset&directConnection=true`). AWS: `AWS_REGION`, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (empty → default credential chain / EC2 IAM role), `S3_BUCKET_NAME` (profile pics), `SQS_QUEUE_URL` (full queue URL, e.g. `https://sqs.ap-southeast-1.amazonaws.com/727974229118/DE-Queue`; without it simulation create still returns 201 but `queued: false` + sim marked failed, and `/admin/queue` returns 503).
 
-> **No `.env` and no `.env.example` exist in the repo** (README references `.env.example`, docs/setup.md documents the vars). Create `.env` from docs/setup.md before running.
+> `.env.example` is **committed** (includes AWS + `SQS_QUEUE_URL`); local `.env` is gitignored. Copy `.env.example` → `.env` and fill secrets before running.
 
 ## Commands
 
 ```bash
-npm install            # needed — node_modules currently absent
+npm install            # deps (already installed on dev machine)
 npm start              # node server.js
 npm run dev            # nodemon server.js
 npm test               # NODE_ENV=test jest (needs Mongo with replica set!)
@@ -116,8 +116,8 @@ docker-compose up --build   # mongo (atlas-local, replica set "replicaset") + ba
 - Simulation: create (Cartesian `totalModels`), list (pagination + status filter), single, results, delete, cancel — all ownership-checked.
 - Admin: users list/get/suspend, simulations list/delete, **real queue metrics** (GetQueueAttributes).
 - Validation (Zod), structured error handling, winston logging, Swagger docs.
-- Docker multi-stage + compose; docs/ suite; 4 Jest/Supertest suites — **58 test cases** (18 auth + 16 admin + 15 simulation + 9 user) verified by grep; **last executed run was 58/58 passing locally** against the atlas-local container (fixed `tests/setup.js` URI). Note: docker/Mongo currently unavailable on this machine, so tests were not re-run during the last audit.
-- `.env.example` created but **uncommitted** (git status: `?? .env.example` — commit it); local `.env` created (gitignored).
+- Docker multi-stage + compose; docs/ suite; 4 Jest/Supertest suites — **73/73 passing** (verified this session against the `atlas-mongo` container). **Docker image build + container smoke test verified** (health 200, login works, real SQS metrics via `GET /admin/queue`).
+- `.env.example` committed (Task 1); local `.env` created (gitignored).
 - Quick-win bug fixes: `/verify` invalid/expired token → 401 (was 500); removed dead `User.modifyEmail`; fixed `password` schema `require:`→`required:` typo.
 
 **Done ✅ (SQS producer)**
@@ -127,11 +127,11 @@ docker-compose up --build   # mongo (atlas-local, replica set "replicaset") + ba
 - `GET /admin/queue` returns real metrics (depth, in-flight, delayed, oldest message age); 503 when `SQS_QUEUE_URL` is unset.
 - Tests: +8 (SQS contract body, param persistence/defaults, 400 ranges, running status, enqueue-failure → failed, queue metrics, 503) — **73/73 passing**; live smoke test against a real queue (`DE-Queue` in ap-southeast-1) verified message body + metrics.
 
-**In progress / stubbed 🟡**
-- Progress/results pipeline: `completedModels`, `progress`, `simulationData` schema-ready but nothing writes them (EC2 worker is the separate `DE-forEC2` repo).
+**Done ✅ (EC2 worker — Task 2, separate repo `DE-forEC2`)**
+- `spawner.js` polls SQS, runs `de.exe`, writes `status` (pending→running→completed|failed), throttled `progress` + `completedModels`, and `simulationData` entries `{functionId, mutationId, crossoverId, selectionId, lowestFitness}` straight to MongoDB; deletes messages only after a successful save; live-verified (success/cancel/failure/SIGTERM/progress).
 
-**Not started ❌ (mostly PRD out-of-scope)**
-- EC2 worker code (separate repo), email verification (`isVerified`), rate limiting, CI/CD, S3/profile pictures, Secrets Manager.
+**Not started ❌ (mostly PRD out-of-scope / future)**
+- Email verification (`isVerified`), rate limiting, CI/CD, AWS Secrets Manager, production deployment to the staging EC2 (`DE-fullStack-staging`, currently stopped). Note: S3 profile pictures **are done** (feature earlier in this repo); EC2 worker **is done** (Task 2).
 
 ## Gotchas / latent bugs (verified by reading code)
 
@@ -147,7 +147,7 @@ docker-compose up --build   # mongo (atlas-local, replica set "replicaset") + ba
 ## Local dev/test environment (verified working)
 
 - MongoDB: `atlas-mongo` docker container (root:password123, auth enforced, RS name = container hostname). Connection string used in `.env`/`.env.example`/`tests/setup.js`: `mongodb://root:password123@localhost:27017/<db>?directConnection=true&authSource=admin` — no `replicaSet` param (name is hostname, changes per recreate; app/tests don't use transactions).
-- `npm test` (58/58 as of the last run) and `npm run dev` both work against it. Node v26.5.1 / npm 11.17.0 available on the dev machine.
+- `npm test` (**73/73**, re-verified this session) and `npm run dev` both work against it. Node v26.5.1 / npm 11.17.0 available on the dev machine.
 
 ## Conventions
 
