@@ -21,7 +21,7 @@ Backend API for a **Differential Evolution (DE) research dashboard**. Researcher
 | Logging | Winston + Morgan (`config/logger.js`, writes `logs/*.log`) |
 | Security | Helmet, CORS, httpOnly cookies |
 | API docs | swagger-jsdoc + swagger-ui-express at `/api/v1/docs` (annotations live in `routes/*.js`) |
-| Testing | Jest 30 + Supertest 7 (4 suites, **73/73 passing**) |
+| Testing | Jest 30 + Supertest 7 (6 suites, **99/99 passing**) |
 | Containers | Multi-stage `Dockerfile`, `Dockerfile.dev`, `docker-compose.yml` (MongoDB atlas-local + backend) |
 
 ## Layout
@@ -33,14 +33,15 @@ config/database.js     # mongoose.connect(MONGODB_URI, { dbName: DB_NAME }); con
 config/logger.js       # winston: console + logs/error.log + logs/combined.log
 config/s3.js           # S3 client + profileImageKey/buildPublicObjectUrl helpers (env read at require time)
 config/sqs.js          # SQS client + sendSimulationJob/getQueueStatus helpers (env read at require time, same convention)
+utils/importParser.js  # pure parser for the .txt data-import format (contract: import-format.md at monorepo root)
 models/user.js         # "users" collection; statics login/register; methods generateJwtToken/generateRefreshToken/save/clearRefreshToken
-models/simulation.js   # "simulations" collection; statics createSimulation/getSimulation/getSimulationById/deleteSimulation/cancelSimulation; DE params np/f/cr/gen/dim; status includes "running"
+models/simulation.js   # "simulations" collection; statics createSimulation/importSimulation/getSimulation/getSimulationById/deleteSimulation/cancelSimulation; DE params np/f/cr/gen/dim; status includes "running"
 controllers/           # authController(verify,refresh,logout) loginController registerController userController simulationController adminController healthController
 routes/index.js        # /health; /simulation (auth); /admin (auth+admin); /user (auth); / (auth routes: login/register/verify/refresh/logout)
 validators/            # authValidators.js, simulationValidators.js (Zod schemas)
 middleware/            # authMiddleware, adminMiddleware, validate, errorHandler, notFound
 docs/                  # README, setup, architecture, authentication, api-reference, models, middleware, testing, swagger.js
-tests/                 # setup.js + auth/simulation/admin/user.test.js
+tests/                 # setup.js + auth/simulation/admin/user/import/importParser.test.js
 Dockerfile, Dockerfile.dev, docker-compose.yml, start-dev.bat (Windows dev bootstrap)
 ```
 
@@ -50,7 +51,7 @@ Dockerfile, Dockerfile.dev, docker-compose.yml, start-dev.bat (Windows dev boots
 `username` (3–50), `email` (unique, lowercase, regex), `password` (`select:false`, hashed pre-save — note typo `require:true` instead of `required:true`), `isVerified` (unused, default false), `role` (`user`|`admin`, default `user`), `isActive` (default true), `refreshToken` (`select:false`, rotation), `profilePicture` (unused), `simulationCount` (unused).
 
 **Simulation** (`models/simulation.js`, collection `simulations`, timestamps):
-`userId` (ObjectId, indexed, ownership check basis), `functions`/`methods.{mutation,crossover,selection}` (validated int arrays, ranged 1–10/1–4/1–2), DE algorithm params `np` (10–40, default 15), `f` (0.1–2.0, default 0.5), `cr` (0.01–1.0, default 0.9), `gen` (≥1, default 1000), `dim` (1–30 — matches de.cpp limit, default 30), `totalModels` (Cartesian product at creation), `completedModels` (default 0), `progress` (0–100), `status` (`pending|running|completed|failed|cancelled`, default `pending`, indexed — workers set `running`), `simulationData` (array of `{functionId, mutationId, crossoverId, selectionId, lowestFitness}` — the results grid, written by the **EC2 worker** (`DE-forEC2/spawner.js`, Task 2) and served back via `GET /simulation/get/:id/results`).
+`userId` (ObjectId, indexed, ownership check basis), `functions`/`methods.{mutation,crossover,selection}` (validated int arrays, ranged 1–10/1–4/1–2), DE algorithm params `np` (10–40, default 15), `f` (0.1–2.0, default 0.5), `cr` (0.01–1.0, default 0.9), `gen` (≥1, default 1000), `dim` (1–30 — matches de.cpp limit, default 30), `totalModels` (Cartesian product at creation), `completedModels` (default 0), `progress` (0–100), `status` (`pending|running|completed|failed|cancelled`, default `pending`, indexed — workers set `running`), `simulationData` (array of `{functionId, mutationId, crossoverId, selectionId, lowestFitness}` — the results grid, written by the **EC2 worker** (`DE-forEC2/spawner.js`, Task 2) and served back via `GET /simulation/get/:id/results`). Imported data (`importSimulation` static) is created directly as `completed` with `progress: 100` — no SQS enqueue.
 
 ## API surface (`/api/v1`)
 
@@ -66,6 +67,7 @@ Dockerfile, Dockerfile.dev, docker-compose.yml, start-dev.bat (Windows dev boots
 | PATCH | `/user/profile` | Bearer | username/email; email uniqueness checked |
 | PATCH | `/user/password` | Bearer | currentPassword + newPassword (≤12 chars) |
 | POST | `/simulation/create` | Bearer | Zod (optional np/f/cr/gen/dim); computes `totalModels`; **enqueues one SQS job per simulation** (worker contract: simulationId, bf, mutation, crossover, selection, cr, f, np, gen, dim) |
+| POST | `/simulation/import` | Bearer | JSON `{content, filename?}`; parses a `.txt` results file (contract: `import-format.md` at monorepo root) into a `completed` simulation; **400 returns line-numbered `errors[]`**; never touches SQS |
 | GET | `/simulation/get` | Bearer | `?page=&limit=&status=`; limit 0 = unpaginated |
 | GET | `/simulation/get/:id/results` | Bearer | progress + `simulationData` |
 | GET | `/simulation/get/:id` | Bearer | ownership check |
@@ -116,7 +118,7 @@ docker-compose up --build   # mongo (atlas-local, replica set "replicaset") + ba
 - Simulation: create (Cartesian `totalModels`), list (pagination + status filter), single, results, delete, cancel — all ownership-checked.
 - Admin: users list/get/suspend, simulations list/delete, **real queue metrics** (GetQueueAttributes).
 - Validation (Zod), structured error handling, winston logging, Swagger docs.
-- Docker multi-stage + compose; docs/ suite; 4 Jest/Supertest suites — **73/73 passing** (verified this session against the `atlas-mongo` container). **Docker image build + container smoke test verified** (health 200, login works, real SQS metrics via `GET /admin/queue`).
+- Docker multi-stage + compose; docs/ suite; 6 Jest/Supertest suites — **99/99 passing** (verified this session against the `atlas-mongo` container). **Docker image build + container smoke test verified** (health 200, login works, real SQS metrics via `GET /admin/queue`).
 - `.env.example` committed (Task 1); local `.env` created (gitignored).
 - Quick-win bug fixes: `/verify` invalid/expired token → 401 (was 500); removed dead `User.modifyEmail`; fixed `password` schema `require:`→`required:` typo.
 
@@ -125,10 +127,16 @@ docker-compose up --build   # mongo (atlas-local, replica set "replicaset") + ba
 - `POST /simulation/create` now **enqueues one SQS job per simulation** after the DB insert. On SQS failure the sim is marked `failed` and the 201 response includes `queued: false` (never silently stuck in pending).
 - Simulation model: DE params `np/f/cr/gen/dim` persisted (Zod-validated, defaults applied); `running` added to the status enum.
 - `GET /admin/queue` returns real metrics (depth, in-flight, delayed, oldest message age); 503 when `SQS_QUEUE_URL` is unset.
-- Tests: +8 (SQS contract body, param persistence/defaults, 400 ranges, running status, enqueue-failure → failed, queue metrics, 503) — **73/73 passing**; live smoke test against a real queue (`DE-Queue` in ap-southeast-1) verified message body + metrics.
+- Tests: +8 (SQS contract body, param persistence/defaults, 400 ranges, running status, enqueue-failure → failed, queue metrics, 503) — **99/99 passing**; live smoke test against a real queue (`DE-Queue` in ap-southeast-1) verified message body + metrics.
 
 **Done ✅ (EC2 worker — Task 2, separate repo `DE-forEC2`)**
 - `spawner.js` polls SQS, runs `de.exe`, writes `status` (pending→running→completed|failed), throttled `progress` + `completedModels`, and `simulationData` entries `{functionId, mutationId, crossoverId, selectionId, lowestFitness}` straight to MongoDB; deletes messages only after a successful save; live-verified (success/cancel/failure/SIGTERM/progress).
+
+**Done ✅ (data import — this feature)**
+- `POST /simulation/import` accepts a `.txt` results file as JSON `{content, filename?}` and stores it as a `completed` simulation (no SQS). The format contract lives at the monorepo root `import-format.md`; the pure parser is `utils/importParser.js` (unit-tested), plus endpoint tests in `tests/import.test.js`.
+- Parser handles an optional `# key=value` metadata block (np/f/cr/gen/dim), a required `model<TAB>benchmark<TAB>lowestFitness` header, and one row per (model × benchmark). Models are parsed right-to-left from the canonical `<mutation>/<crossover>/<selection>` string; benchmark is 1–10; `lowestFitness` is a finite number.
+- Failures return `400 { success:false, message:"Import failed", errors:[{line,message}] }` so the frontend can show line-numbered, actionable messages.
+- Tests: 19 parser + 6 endpoint = **99/99 total** (backend).
 
 **Not started ❌ (mostly PRD out-of-scope / future)**
 - Email verification (`isVerified`), rate limiting, CI/CD, AWS Secrets Manager, production deployment to the staging EC2 (`DE-fullStack-staging`, currently stopped). Note: S3 profile pictures **are done** (feature earlier in this repo); EC2 worker **is done** (Task 2).
@@ -147,7 +155,7 @@ docker-compose up --build   # mongo (atlas-local, replica set "replicaset") + ba
 ## Local dev/test environment (verified working)
 
 - MongoDB: `atlas-mongo` docker container (root:password123, auth enforced, RS name = container hostname). Connection string used in `.env`/`.env.example`/`tests/setup.js`: `mongodb://root:password123@localhost:27017/<db>?directConnection=true&authSource=admin` — no `replicaSet` param (name is hostname, changes per recreate; app/tests don't use transactions).
-- `npm test` (**73/73**, re-verified this session) and `npm run dev` both work against it. Node v26.5.1 / npm 11.17.0 available on the dev machine.
+- `npm test` (**99/99**, re-verified this session) and `npm run dev` both work against it. Node v26.5.1 / npm 11.17.0 available on the dev machine.
 
 ## Conventions
 

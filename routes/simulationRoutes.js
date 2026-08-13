@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const {
   createSimulation,
+  importSimulation,
   getAllSimulations,
   deleteSimulation,
   cancelSimulation,
@@ -9,7 +10,10 @@ const {
   getSimulationResults,
 } = require("../controllers/simulationController");
 const validate = require("../middleware/validate");
-const { createSimulationSchema } = require("../validators/simulationValidators");
+const {
+  createSimulationSchema,
+  importSimulationSchema,
+} = require("../validators/simulationValidators");
 
 /**
  * @openapi
@@ -70,6 +74,38 @@ const { createSimulationSchema } = require("../validators/simulationValidators")
  *         description: Unauthorized
  */
 router.post("/create", validate(createSimulationSchema), createSimulation);
+
+/**
+ * @openapi
+ * /api/v1/simulation/import:
+ *   post:
+ *     summary: Import a user-provided .txt results file as a completed simulation
+ *     tags: [Simulation]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [content]
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 description: Raw .txt file content (see import-format.md)
+ *               filename:
+ *                 type: string
+ *                 description: Optional original filename
+ *     responses:
+ *       201:
+ *         description: Simulation imported successfully
+ *       400:
+ *         description: Validation or file-format error (with line numbers)
+ *       401:
+ *         description: Unauthorized
+ */
+router.post("/import", validate(importSimulationSchema), importSimulation);
 
 /**
  * @openapi

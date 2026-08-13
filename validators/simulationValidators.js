@@ -32,6 +32,14 @@ const createSimulationSchema = z.object({
   dim: deParam(1, 30, "Dimension (dim)").default(30),
 });
 
+// Body for the data-import endpoint: the .txt content is sent as a string
+// (the frontend reads the file with FileReader). filename is informational.
+const importSimulationSchema = z.object({
+  content: z.string().min(1, "File content is required"),
+  filename: z.string().max(255, "Filename must be at most 255 characters").optional(),
+});
+
 module.exports = {
   createSimulationSchema,
+  importSimulationSchema,
 };

@@ -1,5 +1,6 @@
 const simulations = require("../models/simulation");
 const { sendSimulationJob } = require("../config/sqs");
+const { parseImportFile } = require("../utils/importParser");
 const logger = require("../config/logger");
 
 const createSimulation = async (req, res, next) => {
@@ -35,6 +36,49 @@ const createSimulation = async (req, res, next) => {
         : "Simulation created but failed to enqueue to the job queue",
       simulationId: simulation._id.toString(),
       queued,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Import a user-provided .txt results file as a completed simulation.
+// The parser returns structured, line-numbered errors which are surfaced to
+// the user (the "teach the user" requirement from import-format.md).
+const importSimulation = async (req, res, next) => {
+  try {
+    const parsed = parseImportFile(req.body.content);
+    if (!parsed.ok) {
+      return res.status(400).json({
+        success: false,
+        message: "Import failed",
+        errors: parsed.errors,
+      });
+    }
+
+    const { params, simulationData } = parsed.data;
+
+    // Derive the schema-required functions/methods arrays as the unique IDs
+    // present in the imported rows (powers the Dashboard/History columns).
+    const uniqueSorted = (ids) => [...new Set(ids)].sort((a, b) => a - b);
+    const functions = uniqueSorted(simulationData.map((row) => row.functionId));
+    const methods = {
+      mutation: uniqueSorted(simulationData.map((row) => row.mutationId)),
+      crossover: uniqueSorted(simulationData.map((row) => row.crossoverId)),
+      selection: uniqueSorted(simulationData.map((row) => row.selectionId)),
+    };
+
+    const simulation = await simulations.importSimulation(req.userId, {
+      functions,
+      methods,
+      simulationData,
+      ...params,
+    });
+
+    res.status(201).json({
+      message: "Data imported successfully",
+      simulationId: simulation._id.toString(),
+      totalModels: simulation.totalModels,
     });
   } catch (err) {
     next(err);
@@ -138,6 +182,7 @@ const getSimulationResults = async (req, res, next) => {
 
 module.exports = {
   createSimulation,
+  importSimulation,
   getAllSimulations,
   deleteSimulation,
   cancelSimulation,

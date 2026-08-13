@@ -161,6 +161,30 @@ simulationSchema.statics.createSimulation = async function (
   });
 };
 
+// Persist user-imported results as an already-completed simulation. Imported
+// data is final, so no SQS job is enqueued (workers skip "completed" anyway).
+simulationSchema.statics.importSimulation = async function (
+  userId,
+  { functions, methods, simulationData, np = 15, f = 0.5, cr = 0.9, gen = 1000, dim = 30 }
+) {
+  const totalModels = simulationData.length;
+  return await this.create({
+    userId,
+    functions,
+    methods,
+    simulationData,
+    totalModels,
+    completedModels: totalModels,
+    progress: 100,
+    status: "completed",
+    np,
+    f,
+    cr,
+    gen,
+    dim,
+  });
+};
+
 //return all simulations for user simulation page
 simulationSchema.statics.getSimulation = async function (userId, options = {}) {
   const { page = 1, limit = 0, status } = options;
